@@ -73,7 +73,8 @@ Run these from an up-to-date `main` branch.
 ## What the workflow checks
 
 - The release tag must equal `v` plus the `version` in `package.json`. A mismatch fails the job before anything is published.
-- `npm ci` installs from the lockfile, `npm run build` compiles `dist/`, then `npm publish` runs. The build must happen **before** `npm publish`: npm removes the `bin` entry from the published metadata when `dist/index.js` does not exist yet, which would break `npx`. The package ships only `dist/` (see `files` in `package.json`).
+- `npm ci` installs from the lockfile, then `npm publish` runs the `prepublishOnly` script, which compiles `dist/`. The package ships only `dist/` (see `files` in `package.json`).
+- npm prints `"bin[socialcalc-mcp]" script name dist/index.js was invalid and removed`. This is cosmetic: npm only rewrites `./dist/index.js` to `dist/index.js`, and the `bin` entry is kept in the published metadata.
 
 ## Publishing to one registry only
 

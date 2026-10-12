@@ -49,10 +49,6 @@ jobs:
 
       - run: npm ci
 
-      # Build first: npm drops a "bin" entry whose file does not exist yet when it
-      # normalises package.json, and dist/ is only created by this step.
-      - run: npm run build
-
       # GitHub Packages only accepts packages scoped to the owner, so the scope is
       # added here instead of changing the name that is published to npm.
       - name: Publish to GitHub Packages
@@ -94,9 +90,6 @@ jobs:
           fi
 
       - run: npm ci
-
-      # Build first so the "bin" entry points at a file that exists (see above).
-      - run: npm run build
 
       - name: Publish to npm
         run: npm publish --access public

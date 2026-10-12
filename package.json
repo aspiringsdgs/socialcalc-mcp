@@ -1,6 +1,6 @@
 {
   "name": "socialcalc-mcp",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Model Context Protocol (MCP) server for SocialCalc spreadsheets.",
   "main": "dist/index.js",
   "type": "module",

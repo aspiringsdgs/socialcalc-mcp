@@ -114,23 +114,28 @@ Useful scripts:
 ## Verify the connection
 
 1. Ask the client: "List the tools on the socialcalc-mcp server." You should see 39 tools.
-2. Ask it to run `new_workbook` with an absolute path, then `write_range` and `read_sheet` on it.
+2. Ask it to run `new_workbook` with a path inside your allowed directory (see [Configuration](#configuration)), then `write_range` and `read_sheet` on it.
 
-You can also check the server without a client. Start it and call the HTTP bridge:
+You can also check the server without a client by enabling the HTTP bridge:
 
 ```bash
-npx -y socialcalc-mcp &
-curl http://localhost:5002/tools
+SOCIALCALC_HTTP_TOKEN=local-secret npx -y socialcalc-mcp --http &
+curl -H "Authorization: Bearer local-secret" http://127.0.0.1:5002/tools
 ```
 
 ## Configuration
 
 | Setting | How | Default |
 | :--- | :--- | :--- |
-| HTTP bridge port | `SOCIALCALC_PORT` environment variable | `5002` |
-| Default workbook directory | `directoryPath` argument of `list_workbooks` | `./data` relative to the server's working directory |
+| Allowed directory | `SOCIALCALC_FILES_DIR` environment variable | The server's working directory |
+| Default for `list_workbooks` | `directoryPath` argument | `data/` inside the allowed directory |
+| HTTP bridge | `--http` flag or `SOCIALCALC_HTTP=1` | Off |
+| HTTP bridge port | `SOCIALCALC_PORT` | `5002` |
+| HTTP bridge address | `SOCIALCALC_HOST` | `127.0.0.1` |
+| HTTP bridge token | `SOCIALCALC_HTTP_TOKEN` | Random, printed to stderr at startup |
+| Browser origins allowed to call the bridge | `SOCIALCALC_CORS_ORIGINS` (comma-separated) | None |
 
-To pass the port from a client config:
+Tools can only read and write files inside the allowed directory. GUI clients do not start the server in your project folder, so set it explicitly:
 
 ```json
 {
@@ -138,7 +143,7 @@ To pass the port from a client config:
     "socialcalc-mcp": {
       "command": "npx",
       "args": ["-y", "socialcalc-mcp"],
-      "env": { "SOCIALCALC_PORT": "5010" }
+      "env": { "SOCIALCALC_FILES_DIR": "/Users/you/Documents/sheets" }
     }
   }
 }
@@ -149,8 +154,11 @@ To pass the port from a client config:
 | Symptom | Cause and fix |
 | :--- | :--- |
 | Client shows the server as failed or disconnected | Run `npx -y socialcalc-mcp` in a terminal and read stderr. Check that `node --version` is 18 or newer and that your client can find `npx` on its `PATH`. |
-| `[Warning] HTTP server port 5002 is already in use` | Another process, often a second client, holds the port. Stdio still works. Set `SOCIALCALC_PORT` to a free port to silence it. |
-| Tools say a file cannot be found | Relative paths resolve against the server's working directory, which for GUI clients is not your project. Use absolute paths. |
+| `[Warning] HTTP server port 5002 is already in use` | The HTTP bridge is enabled and another process holds the port. Stdio still works. Set `SOCIALCALC_PORT` to a free port. |
+| HTTP bridge returns `401` | Send `Authorization: Bearer <token>`. If you did not set `SOCIALCALC_HTTP_TOKEN`, the generated token is printed to stderr at startup |
+| A browser page cannot reach the bridge | Add its origin to `SOCIALCALC_CORS_ORIGINS` and send the token and `Content-Type: application/json` |
+| `Access denied: ... is outside the allowed directory` | The file is outside `SOCIALCALC_FILES_DIR` (or the working directory). Move it inside, or point `SOCIALCALC_FILES_DIR` at its folder |
+| Tools say a file cannot be found | Relative paths resolve against the allowed directory, which for GUI clients is not your project. Set `SOCIALCALC_FILES_DIR` |
 | `Invalid file extension` | Core tools only open `.json` and `.msc` workbooks. Import CSV files with `import_from_csv` first. |
 | `XLSX export is not implemented` | `export_to_xlsx` and `import_from_xlsx` are placeholders in this version. Use CSV. |
 | Changes made by a tool are not visible in a browser UI | Tools write the workbook file on disk. Reload the file in your UI, or use the HTTP bridge's `/read-file` endpoint. |

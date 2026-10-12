@@ -12,6 +12,7 @@ import { serializeWorkbookJson } from "./adapters/socialcalc/serializer.js";
 import { sheetToCsv, csvToSheet } from "./adapters/csv/index.js";
 import { workbookToXlsx, xlsxToWorkbook } from "./adapters/xlsx/index.js";
 import { FORMULAS } from "./utils/formulas.js";
+import { resolveInside } from "./utils/paths.js";
 import { SpreadsheetService } from "./services/spreadsheetService.js";
 
 const adapter = new SocialCalcAdapter();
@@ -741,6 +742,17 @@ export class SocialcalcMcpServer {
         }
       }
 
+      // Confine every file the caller names to the allowed directory (SOCIALCALC_FILES_DIR).
+      args = { ...(args ?? {}) };
+      for (const key of ["workbookPath", "csvPath", "xlsxPath", "directoryPath"]) {
+        if (typeof args[key] === "string" && args[key] !== "") {
+          args[key] = resolveInside(args[key]);
+        }
+      }
+      if (name === "list_workbooks" && !args.directoryPath) {
+        args.directoryPath = resolveInside("data");
+      }
+
       if (args && args.workbookPath) {
         const ext = path.extname(args.workbookPath).toLowerCase();
         if (ext !== ".json" && ext !== ".msc") {
@@ -764,7 +776,7 @@ export class SocialcalcMcpServer {
 
       switch (name) {
         case "list_workbooks": {
-          const dir = args.directoryPath || "./data";
+          const dir = args.directoryPath;
           const files = await fs.readdir(dir);
           const workbooks = files.filter(f => f.endsWith(".json") || f.endsWith(".msc"));
           return {

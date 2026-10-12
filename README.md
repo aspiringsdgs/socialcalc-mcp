@@ -7,7 +7,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants **read, edit, style and analyse SocialCalc spreadsheet workbooks**. It works with any MCP client, including **Claude Desktop**, **Claude Code**, **Cursor**, **VS Code** and **Windsurf**.
 
-The server speaks MCP over **stdio**. It also starts a small optional **HTTP bridge** on port `5002`, which browser-based test UIs can use.
+The server speaks MCP over **stdio**. It also has an optional, off-by-default **HTTP bridge** for browser-based test UIs.
 
 | | |
 | :--- | :--- |
@@ -93,7 +93,8 @@ Restart the client after changing its configuration. Ask it to "list the tools o
 Every tool that touches a workbook takes a `workbookPath`.
 
 - Only SocialCalc JSON workbooks (`.json`, `.msc`) can be edited directly. Use [`import_from_csv`](#5-csv--xlsx-import--export) to bring a CSV in and `export_to_csv` to get a sheet back out. XLSX is [not implemented yet](#5-csv--xlsx-import--export).
-- Relative paths resolve against the **working directory of the server process**, and `list_workbooks` defaults to `./data`. GUI clients such as Claude Desktop do not start the server in your project folder, so pass **absolute paths** there.
+- Every file the tools touch must be **inside the allowed directory**: `SOCIALCALC_FILES_DIR` if set, otherwise the server's working directory. Paths that escape it (`../`, absolute paths elsewhere, symlinks out) are rejected. Relative paths resolve against that directory, and `list_workbooks` defaults to its `data/` folder.
+- GUI clients such as Claude Desktop do not start the server in your project folder, so set `SOCIALCALC_FILES_DIR` to the folder that holds your workbooks, for example `"env": { "SOCIALCALC_FILES_DIR": "/Users/you/Documents/sheets" }`.
 - Sheet-level tools accept a `sheetName` or a 1-based `sheetNumber`. If both are given, `sheetNumber` wins. If neither is given, the workbook's active sheet is used.
 - Ranges use A1 notation, for example `B2`, `A1:C10`.
 
@@ -173,13 +174,25 @@ The server registers **39 tools**. `req` means required, `opt` means optional.
 
 ## HTTP bridge
 
-Besides stdio, the process starts an HTTP server for browser-based clients.
+Besides stdio, the server can expose the same tools over HTTP for browser-based test UIs. It is **off by default**. Turn it on with `--http` or `SOCIALCALC_HTTP=1`:
 
-| Setting | Value |
-| :--- | :--- |
-| Default port | `5002` |
-| Override | `SOCIALCALC_PORT=5010 npx -y socialcalc-mcp` |
-| If the port is taken | A warning is logged and the stdio transport keeps working. |
+```bash
+SOCIALCALC_HTTP_TOKEN=choose-a-secret npx -y socialcalc-mcp --http
+```
+
+| Setting | Default | Meaning |
+| :--- | :--- | :--- |
+| `--http` / `SOCIALCALC_HTTP=1` | off | Start the bridge |
+| `SOCIALCALC_PORT` | `5002` | Port. If it is taken, a warning is logged and stdio keeps working |
+| `SOCIALCALC_HOST` | `127.0.0.1` | Address to bind. Only loopback by default |
+| `SOCIALCALC_HTTP_TOKEN` | random | Bearer token. If unset, a random one is generated and printed to stderr at startup |
+| `SOCIALCALC_CORS_ORIGINS` | none | Comma-separated browser origins allowed to call the bridge, for example `http://localhost:3000` |
+
+Every request must send `Authorization: Bearer <token>`, and `POST` bodies must be `application/json` (max 10 MB). Files are confined to the allowed directory, the same as for the tools.
+
+```bash
+curl -H "Authorization: Bearer choose-a-secret" http://127.0.0.1:5002/tools
+```
 
 | Endpoint | Purpose |
 | :--- | :--- |
@@ -189,7 +202,7 @@ Besides stdio, the process starts an HTTP server for browser-based clients.
 | `GET /read-file?path=...` | Reads a workbook file back. |
 
 > [!WARNING]
-> The bridge is meant for **local development**. It sends `Access-Control-Allow-Origin: *`, has no authentication, and listens on all network interfaces. `/sync` and `/read-file` only accept `.json`/`.msc` files and only paths inside the directory two levels above the installed `dist/` folder, but you should still avoid running the server on an untrusted network.
+> The bridge is meant for **local development**. Keep it on loopback, keep the token secret, and only add origins you trust to `SOCIALCALC_CORS_ORIGINS`. Binding it to another address makes every tool reachable from that network to anyone who has the token.
 
 ## Development
 
@@ -200,6 +213,7 @@ npm install
 npm run build      # compile TypeScript to dist/
 npm start          # run the compiled server
 npm run dev        # run from source with tsx
+npm test           # build, then run the tests in test/
 ```
 
 Project layout:

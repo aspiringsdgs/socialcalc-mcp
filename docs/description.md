@@ -15,7 +15,7 @@ SocialCalc is the spreadsheet engine originally written by Dan Bricklin. The sis
 | License | MIT |
 | Language | TypeScript, compiled to ES modules |
 | MCP SDK | `@modelcontextprotocol/sdk` |
-| Transports | stdio (MCP) and a local HTTP bridge |
+| Transports | stdio (MCP) and an optional local HTTP bridge |
 
 ## How it works
 
@@ -26,7 +26,7 @@ SocialCalc is the spreadsheet engine originally written by Dan Bricklin. The sis
  Browser test UI ──HTTP──▶ :5002 bridge                         formulas)
 ```
 
-1. **`src/index.ts`** starts two things: the MCP server on stdio, and an HTTP server (default port `5002`) that exposes the same tools to browsers.
+1. **`src/index.ts`** starts the MCP server on stdio and, only when enabled with `--http`, an HTTP server (default `127.0.0.1:5002`) that exposes the same tools to browsers.
 2. **`src/server.ts`** holds the tool definitions (name, description, JSON schema), `listTools()`, and the handler that dispatches a call to the right operation. Every tool call loads the workbook from disk, applies the change, and writes it back when the tool modifies data.
 3. **`src/services/`** implements the operations: `workbook` (load, save, create), `sheet` (rows, columns, ranges), `styles` (fonts, borders, colours, formats) and `formulas` (the formula catalogue behind `get_formulas`).
 4. **`src/adapters/`** converts between files and the in-memory model. The SocialCalc adapter reads and writes the JSON workbook format, and the CSV adapter converts a single sheet.
@@ -57,7 +57,7 @@ The server registers 39 tools in five groups. Full parameters are in the [README
 
 ### Conventions that apply to every tool
 
-- **Paths**: `workbookPath` is resolved against the server's working directory. Use absolute paths from GUI clients.
+- **Paths**: `workbookPath`, `csvPath`, `xlsxPath` and `directoryPath` are resolved against the allowed directory (`SOCIALCALC_FILES_DIR`, default the working directory) and rejected if they leave it, including through `..` and symlinks. This check runs for every tool in one place (`executeTool`, using `src/utils/paths.ts`).
 - **Sheet selection**: pass `sheetName` or a 1-based `sheetNumber`. `sheetNumber` wins if both are given. If neither is given, the active sheet is used.
 - **Ranges**: A1 notation. A single cell (`B2`) or a rectangle (`A1:C10`).
 - **Reads** return Markdown tables, which are cheap for a model to read.
@@ -65,7 +65,7 @@ The server registers 39 tools in five groups. Full parameters are in the [README
 
 ## HTTP bridge
 
-The bridge lets a web page drive the same tools without an MCP client. It is a development aid, not a production API.
+The bridge lets a web page drive the same tools without an MCP client. It is a development aid, not a production API, and it is **off unless started with `--http`** (or `SOCIALCALC_HTTP=1`).
 
 | Endpoint | Purpose |
 | :--- | :--- |
@@ -74,13 +74,13 @@ The bridge lets a web page drive the same tools without an MCP client. It is a d
 | `POST /sync` | Write browser-side workbook data to a file: `{ "workbookPath", "mscData" }` |
 | `GET /read-file?path=...` | Read a workbook file back |
 
-It allows any CORS origin, has no authentication, and listens on all interfaces. File access through `/sync` and `/read-file` is limited to `.json` and `.msc` files inside the directory two levels above the installed `dist/` folder. Do not expose the port to an untrusted network.
+Defaults are restrictive: it binds to `127.0.0.1`, every request needs a bearer token (generated at startup if `SOCIALCALC_HTTP_TOKEN` is not set), `POST` bodies must be `application/json`, and no CORS headers are sent unless the caller's origin is listed in `SOCIALCALC_CORS_ORIGINS`. `/sync` and `/read-file` accept only `.json` and `.msc` files inside the allowed directory. See the [README](../README.md#http-bridge) for all settings.
 
 ## Known limitations
 
 - XLSX import and export are placeholders and always return an error.
-- The test script is a placeholder (`npm test` prints an error). There is no automated test suite in this repository yet.
-- The HTTP bridge's path guard is relative to the install location, so for an `npx` install it covers `node_modules` siblings rather than your project folder.
+- The only automated tests cover path confinement and the HTTP bridge defaults (`test/security.test.mjs`). There are no tests for the individual spreadsheet tools yet.
+- Confinement relies on the allowed directory. With the default (the working directory), a client that starts the server in `/` allows the whole filesystem, so set `SOCIALCALC_FILES_DIR` for GUI clients.
 
 ## Related projects
 

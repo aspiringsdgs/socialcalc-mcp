@@ -1,0 +1,97 @@
+name: Publish
+
+# Publishes the package when a GitHub Release is published.
+#   - GitHub Packages: @aspiringsdgs/socialcalc-mcp (uses the built-in GITHUB_TOKEN)
+#   - npm:             socialcalc-mcp               (needs the NPM_TOKEN repository secret)
+# Run it by hand from the Actions tab to publish to one registry only.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      registry:
+        description: Registry to publish to
+        type: choice
+        options:
+          - github
+          - npm
+          - both
+        default: github
+
+permissions:
+  contents: read
+
+jobs:
+  github-packages:
+    if: github.event_name == 'release' || inputs.registry == 'github' || inputs.registry == 'both'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          registry-url: https://npm.pkg.github.com
+          scope: "@aspiringsdgs"
+
+      - name: Check release tag matches package.json version
+        if: github.event_name == 'release'
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "${{ github.event.release.tag_name }}" ]; then
+            echo "::error::Release tag ${{ github.event.release.tag_name }} does not match package.json version ($expected)"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      # GitHub Packages only accepts packages scoped to the owner, so the scope is
+      # added here instead of changing the name that is published to npm.
+      - name: Publish to GitHub Packages
+        run: |
+          npm pkg set name=@aspiringsdgs/socialcalc-mcp
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm:
+    if: github.event_name == 'release' || inputs.registry == 'npm' || inputs.registry == 'both'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+
+      - name: Require NPM_TOKEN
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::The NPM_TOKEN repository secret is not set"
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Check release tag matches package.json version
+        if: github.event_name == 'release'
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "${{ github.event.release.tag_name }}" ]; then
+            echo "::error::Release tag ${{ github.event.release.tag_name }} does not match package.json version ($expected)"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
